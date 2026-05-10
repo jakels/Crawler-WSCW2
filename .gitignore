@@ -185,3 +185,4 @@ cython_debug/
 
 # Crawler cache
 cache/*
+data/index.json

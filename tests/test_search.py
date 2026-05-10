@@ -14,7 +14,7 @@ def _engine(docs: dict[str, str]) -> SearchEngine:
 
 
 # ---------------------------------------------------------------------
-# find
+# find — AND mode (unquoted)
 # ---------------------------------------------------------------------
 def test_find_single_term_returns_matching_docs() -> None:
     engine = _engine({
@@ -53,7 +53,7 @@ def test_find_returns_empty_for_empty_query() -> None:
     engine = _engine({"u1": "hello"})
     assert engine.find("") == []
     assert engine.find("    ") == []
-    assert engine.find("!!!") == []  # punctuation tokenises to nothing
+    assert engine.find("!!!") == []
 
 
 def test_find_is_case_insensitive() -> None:
@@ -69,19 +69,15 @@ def test_find_strips_punctuation_from_query() -> None:
 
 
 def test_find_ranks_higher_tf_above_lower_tf() -> None:
-    # Both docs match; the one mentioning the term more often (relative
-    # to its length) should rank first.
     engine = _engine({
-        "u1": "rare common",                    # tf=1, len=2 → tf_norm 0.5
-        "u2": "rare rare rare common common",   # tf=3, len=5 → tf_norm 0.6
+        "u1": "rare common",
+        "u2": "rare rare rare common common",
     })
     urls = [url for url, _ in engine.find("rare")]
     assert urls == ["u2", "u1"]
 
 
 def test_find_rare_term_outranks_common_term_for_same_doc() -> None:
-    # IDF should weight a term that appears in 1/3 docs more heavily
-    # than one that appears in 3/3.
     engine = _engine({
         "u1": "common rare",
         "u2": "common other",
@@ -92,6 +88,87 @@ def test_find_rare_term_outranks_common_term_for_same_doc() -> None:
     rare_score = rare_results[0][1]
     common_score = next(score for url, score in common_results if url == "u1")
     assert rare_score > common_score
+
+
+# ---------------------------------------------------------------------
+# find — phrase mode (quoted)
+# ---------------------------------------------------------------------
+def test_phrase_matches_adjacent_words() -> None:
+    engine = _engine({
+        "u1": "good morning friends",   # good, morning adjacent
+        "u2": "good day morning",       # good, morning not adjacent
+    })
+    urls = [url for url, _ in engine.find('"good morning"')]
+    assert urls == ["u1"]
+
+
+def test_phrase_does_not_match_non_adjacent() -> None:
+    engine = _engine({"u1": "good morning friends"})
+    # "good" at pos 0 and "friends" at pos 2 — not adjacent.
+    assert engine.find('"good friends"') == []
+
+
+def test_phrase_with_three_consecutive_words() -> None:
+    engine = _engine({
+        "u1": "the good morning friends meet",
+        "u2": "good morning is a greeting",
+    })
+    urls = [url for url, _ in engine.find('"good morning friends"')]
+    assert urls == ["u1"]
+
+
+def test_phrase_is_case_insensitive() -> None:
+    engine = _engine({"u1": "Good Morning everyone"})
+    urls = [url for url, _ in engine.find('"GOOD MORNING"')]
+    assert urls == ["u1"]
+
+
+def test_phrase_with_single_word_equivalent_to_term() -> None:
+    engine = _engine({
+        "u1": "good morning",
+        "u2": "good night",
+    })
+    urls = [url for url, _ in engine.find('"good"')]
+    assert set(urls) == {"u1", "u2"}
+
+
+def test_phrase_empty_or_whitespace_returns_empty() -> None:
+    engine = _engine({"u1": "anything"})
+    assert engine.find('""') == []
+    assert engine.find('"   "') == []
+    assert engine.find('"!!!"') == []
+
+
+def test_phrase_ranks_more_occurrences_higher() -> None:
+    engine = _engine({
+        "u1": "good morning good morning good morning x x",
+        "u2": "good morning x x x x x x",
+    })
+    urls = [url for url, _ in engine.find('"good morning"')]
+    assert urls == ["u1", "u2"]
+
+
+def test_phrase_respects_word_order() -> None:
+    engine = _engine({"u1": "good morning"})
+    assert engine.find('"good morning"')         # forward order matches
+    assert engine.find('"morning good"') == []   # reversed order does not
+
+
+def test_phrase_with_unknown_word_returns_empty() -> None:
+    engine = _engine({"u1": "good morning"})
+    assert engine.find('"good xyzzy"') == []
+
+
+def test_and_and_phrase_queries_coexist() -> None:
+    # Same engine; one query is AND, the other is phrase, results differ.
+    engine = _engine({
+        "u1": "good morning friends",
+        "u2": "morning is good for everyone",
+    })
+    and_urls = {url for url, _ in engine.find("good morning")}
+    phrase_urls = {url for url, _ in engine.find('"good morning"')}
+    assert and_urls == {"u1", "u2"}
+    assert phrase_urls == {"u1"}
 
 
 # ---------------------------------------------------------------------

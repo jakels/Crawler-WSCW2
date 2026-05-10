@@ -98,6 +98,27 @@ def test_find_empty_shows_usage(
     assert "Usage:" in out
 
 
+def test_find_phrase_matches_adjacent_words(
+    shell_with_index: SearchShell, capsys: pytest.CaptureFixture[str]
+) -> None:
+    capsys.readouterr()
+    # u1 = "good morning friends" → "good" and "morning" are adjacent.
+    shell_with_index.do_find('"good morning"')
+    out = capsys.readouterr().out
+    assert "u1" in out
+    assert "u2" not in out
+
+
+def test_find_phrase_rejects_non_adjacent_words(
+    shell_with_index: SearchShell, capsys: pytest.CaptureFixture[str]
+) -> None:
+    capsys.readouterr()
+    # u1 contains both "good" and "friends" but with "morning" in between.
+    shell_with_index.do_find('"good friends"')
+    out = capsys.readouterr().out
+    assert "No results" in out
+
+
 def test_print_word_shows_postings(
     shell_with_index: SearchShell, capsys: pytest.CaptureFixture[str]
 ) -> None:

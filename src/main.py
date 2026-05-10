@@ -29,7 +29,9 @@ class SearchShell(cmd.Cmd):
 
     intro = (
         "Quotes search engine.\n"
-        "Commands: build, load, print <word>, find <query>, help, quit."
+        "Commands: build, load, print <word>, find <query>, help, quit.\n"
+        'Tip: wrap a query in double quotes for phrase search '
+        '(find "good friends").'
     )
     prompt = "> "
 
@@ -92,13 +94,17 @@ class SearchShell(cmd.Cmd):
         print(self.search_engine.print_term(arg))
 
     def do_find(self, arg: str) -> None:
-        """find <query>: list all pages containing every term in <query>,
-        ranked by TF-IDF."""
+        """find <query>: list pages matching <query>, ranked by TF-IDF.
+
+        Plain query (find good friends) returns pages containing every
+        term anywhere in the document. Quoted query (find "good
+        friends") returns only pages where the terms appear adjacent
+        in that order — phrase search."""
         if not self._require_index():
             return
         query = arg.strip()
         if not query:
-            print("Usage: find <query>")
+            print('Usage: find <query>  (or  find "<phrase>"  for phrase search)')
             return
         assert self.search_engine is not None
         results = self.search_engine.find(query)

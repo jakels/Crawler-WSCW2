@@ -14,7 +14,7 @@ underlying modules:
   SearchShell  ──►  Crawler  (build only)
        │      ──►  Indexer   (build, load, and used by SearchEngine)
        ▼
-  SearchEngine  ──►  print_term, find
+  SearchEngine  ──►  print_term, find (AND / phrase)
 ```
 
 The shell holds *no* search logic of its own. Every command is a
@@ -23,6 +23,13 @@ formatting. That separation is what makes the indexer and search
 modules testable in isolation, and it's what makes `main.py` itself
 testable by driving `do_*` methods directly without spawning a
 subprocess.
+
+The shell does not need to know about phrase vs AND search either:
+the user types the quoted query, the shell forwards the whole string
+to `SearchEngine.find()`, and the search layer detects the mode. The
+result format is the same for both modes, with the original query
+(quotes and all) echoed back in the output so the user can see at a
+glance which mode they invoked.
 
 ## Module-level constants
 
@@ -49,8 +56,10 @@ rewards under "Python best practices".
 
 ### `intro` and `prompt`
 
-Class-level attributes consumed by `cmd.Cmd`. `intro` is printed
-once when `cmdloop` starts; `prompt` precedes every input.
+Class-level attributes consumed by `cmd.Cmd`. `intro` is printed once
+when `cmdloop` starts; it lists the available commands and includes a
+hint about phrase search, so users discover the feature without having
+to read documentation. `prompt` precedes every input.
 
 ### `__init__(self, *args, **kwargs)`
 
@@ -72,10 +81,9 @@ Step by step:
    re-fetched from the live site (respecting the 6-second politeness
    window).
 2. Print a status message announcing the crawl.
-3. Construct a `Crawler` and call `crawl()` to obtain
-   `{url: html}`.
+3. Construct a `Crawler` and call `crawl()` to obtain `{url: html}`.
 4. Print the page count.
-5. Construct a fresh `Indexer` (so a previous index in memory is
+5. Construct a fresh `Indexer` (so any previous index in memory is
    discarded), call `build(pages)`, then `save(INDEX_PATH)`.
 6. Construct a `SearchEngine` over the new index and store it on
    `self`. From now on, `find` and `print` will work.
@@ -117,9 +125,15 @@ Implements `find <query>`.
 Step by step:
 
 1. `_require_index()`.
-2. Refuse on empty input with a usage hint.
-3. Call `self.search_engine.find(query)`.
-4. If empty, print `"No results for '...'"`.
+2. Refuse on empty input with a usage hint that mentions both modes.
+3. Pass the raw `query` to `self.search_engine.find(query)`. The
+   search engine detects whether the query is wrapped in double
+   quotes and routes to phrase or AND logic accordingly. **The shell
+   does not parse the query itself** — it forwards a string and
+   formats a list of `(url, score)` pairs back.
+4. If empty, print `"No results for '<query>'"`. Echoing the query
+   verbatim — including the quote marks if any — makes the failure
+   message unambiguous about which mode was used.
 5. Otherwise print a header and one numbered line per result, with
    the URL and the TF-IDF score formatted to four decimals. Numbered
    lines make the output feel like a search-engine result page and
@@ -128,8 +142,8 @@ Step by step:
 ### `do_quit(self, arg) -> bool`
 
 Implements `quit` (and, via the aliases below, `exit` and EOF).
-Prints `"Goodbye."` and returns `True`. In `cmd.Cmd`, a truthy
-return from a `do_X` method exits `cmdloop`.
+Prints `"Goodbye."` and returns `True`. In `cmd.Cmd`, a truthy return
+from a `do_X` method exits `cmdloop`.
 
 ### Aliases: `do_exit`, `do_EOF`
 
@@ -154,8 +168,7 @@ message instead of `cmd`'s default cryptic error.
 Single source of truth for the "is an index loaded?" check. Returns
 `True` if `self.search_engine` is set; otherwise prints a hint and
 returns `False`. Centralising this means `do_find` and `do_print`
-share one consistent error message and one consistent behaviour, so
-adding a third query command later costs one line.
+share one consistent error message and one consistent behaviour.
 
 ## Function: `main() -> None`
 
@@ -163,8 +176,8 @@ The script entry point.
 
 Step by step:
 
-1. Configure logging at WARNING level so user-facing CLI output
-   isn't drowned by INFO messages from the crawler/indexer. Anyone
+1. Configure logging at WARNING level so user-facing CLI output isn't
+   drowned by INFO messages from the crawler/indexer. Anyone
    debugging can flip to INFO with one edit.
 2. Construct a `SearchShell` and run `cmdloop()`.
 3. Catch `KeyboardInterrupt` (Ctrl-C) so the shell exits gracefully
@@ -186,13 +199,13 @@ doesn't accidentally start the loop.
   Keeps state per-instance, which is what made `test_main.py` clean
   to write.
 - **`INDEX_PATH` as a module-level constant.** Tests `monkeypatch` it
-  to a `tmp_path` so they exercise `do_build` and `do_load` against
-  a real (throwaway) file system, not a mock.
-- **Separation between shell formatting and search logic.** The shell
-  decides how a result *looks* (numbering, score precision); the
-  engine decides which results *exist* and in what order. Either can
-  be swapped without touching the other.
-- **`_require_index` as a single guard.** One call site per
-  command, one consistent error message.
+  to a `tmp_path` so they exercise `do_build` and `do_load` against a
+  real (throwaway) file system, not a mock.
+- **Shell does not parse phrase vs AND.** The query string is passed
+  through to `SearchEngine.find()` unchanged. The shell only formats
+  results. This is what lets phrase search be added without touching
+  any do_X method's logic, only its docstring and help text.
+- **`_require_index` as a single guard.** One call site per command,
+  one consistent error message.
 - **Graceful Ctrl-C handling in `main`.** Small touch, but it's what
   separates "this looks like a tool" from "this looks like a script".

@@ -182,7 +182,3 @@ cython_debug/
 
 # IDE - PyCharm
 .idea/*
-
-# Crawler cache
-cache/*
-data/index.json

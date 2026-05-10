@@ -31,8 +31,19 @@ def shell_with_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SearchS
 
 
 def test_load_succeeds_and_reports_counts(
-    shell_with_index: SearchShell, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
+    idx = Indexer()
+    idx.add_document("https://example.com/u1", "good morning friends")
+    idx.add_document("https://example.com/u2", "good night")
+    index_path = tmp_path / "index.json"
+    idx.save(index_path)
+    monkeypatch.setattr("src.main.INDEX_PATH", index_path)
+
+    SearchShell().do_load("")
+
     out = capsys.readouterr().out
     assert "Loaded 2 documents" in out
 

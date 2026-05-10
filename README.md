@@ -57,7 +57,7 @@ Clone the repository and install dependencies into a virtual
 environment:
 
 ```bash
-git clone https://github.com/<your-username>/Crawler-WSCW2.git
+git clone https://github.com/jakels/Crawler-WSCW2.git
 cd Crawler-WSCW2
 
 python -m venv .venv
